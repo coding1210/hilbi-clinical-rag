@@ -1,0 +1,27 @@
+# --- Core retrieval / embeddings ---
+sentence-transformers>=3.0.0     # bi-encoder embeddings + cross-encoder re-ranker
+faiss-cpu>=1.8.0                  # dense vector index (flat / exact for small corpus)
+rank-bm25>=0.2.2                 # lexical retrieval for hybrid fusion
+
+# --- Privacy: PHI de-identification / pseudonymisation ---
+presidio-analyzer>=2.2.355
+presidio-anonymizer>=2.2.355
+spacy>=3.7.0
+# spaCy model installed separately via `make setup`:
+#   python -m spacy download en_core_web_lg
+
+# --- Generation (optional; only needed for the Claude path) ---
+anthropic>=0.40.0
+
+# --- Config / data / reporting ---
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+pyyaml>=6.0
+numpy>=1.26,<3.0
+pandas>=2.1.0
+
+# --- Optional: pull full MedQuAD from HuggingFace (vendored slice works offline without it) ---
+datasets>=2.18.0
+
+# --- Dev / test ---
+pytest>=8.0.0

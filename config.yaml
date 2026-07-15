@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Clinical RAG — single source of truth for all tunable knobs.
+# Every design decision (chunking, retrieval, re-ranking, privacy, generation)
+# is expressed here so experiments/ablations need no code changes.
+# ─────────────────────────────────────────────────────────────────────────────
+
+data:
+  corpus_path: data/corpus/medquad_slice.jsonl
+  eval_path: data/eval/eval_set.jsonl
+  # If true, data_loader tries to pull the full MedQuAD from HuggingFace;
+  # otherwise it uses the vendored slice (fully offline, reproducible).
+  use_huggingface: false
+
+chunking:
+  # Token-based sentence-window chunking. Clinical answers are dense; keep chunks
+  # small enough to stay on-topic but large enough to preserve clinical context.
+  max_tokens: 320
+  overlap_tokens: 48          # ~15% overlap so facts spanning a boundary aren't lost
+  respect_sentences: true     # never split mid-sentence
+
+embeddings:
+  # Default = strong, fast general model. Swap `model` to a biomedical encoder to
+  # show domain adaptation, e.g. ncbi/MedCPT-Query-Encoder or a PubMedBERT model.
+  model: BAAI/bge-small-en-v1.5
+  # bge models expect a short instruction prefix on the QUERY side only.
+  query_prefix: "Represent this sentence for searching relevant passages: "
+  normalize: true
+  batch_size: 32
+
+retrieval:
+  mode: hybrid                # one of: dense | bm25 | hybrid
+  candidate_k: 20             # how many candidates to pull before re-ranking
+  rrf_k: 60                   # Reciprocal Rank Fusion constant (standard default)
+
+rerank:
+  enabled: true
+  model: BAAI/bge-reranker-base   # cross-encoder; swap to ncbi/MedCPT-Cross-Encoder
+  top_k: 4                        # chunks kept after re-ranking (minimum context)
+  score_threshold: -6.0           # drop weakly-relevant chunks (raw cross-encoder logit)
+
+prompt:
+  # "Minimum context" budget: even after top_k, cap the total context tokens.
+  max_context_tokens: 900
+
+privacy:
+  # Presidio entities we treat as PHI. AGE handled specially (HIPAA: only >89 is PHI).
+  entities:
+    - PERSON
+    - DATE_TIME
+    - PHONE_NUMBER
+    - EMAIL_ADDRESS
+    - LOCATION
+    - US_SSN
+  score_threshold: 0.4        # Presidio confidence cutoff
+  enable_mrn_recognizer: true # custom recognizer for Medical Record Numbers
+
+llm:
+  # provider: mock  -> deterministic extractive answer, no network, no key (default).
+  # provider: claude -> Anthropic API (needs ANTHROPIC_API_KEY).
+  provider: mock
+  claude_model: claude-haiku-4-5
+  max_tokens: 512
+  temperature: 0.0
+
+eval:
+  k_values: [1, 3, 5]         # report metrics @ these cutoffs
+  report_md: results/eval_report.md
+  report_json: results/eval_results.json
