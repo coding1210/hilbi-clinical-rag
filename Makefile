@@ -8,9 +8,16 @@ BIN := $(VENV)/bin
 .PHONY: setup index eval ask test clean
 
 setup:
-	uv venv --python $(PY) $(VENV) || $(PY) -m venv $(VENV)
-	$(BIN)/python -m pip install -U pip
-	$(BIN)/pip install -r requirements.txt
+	@if command -v uv >/dev/null 2>&1; then \
+		echo ">> using uv"; \
+		uv venv --python $(PY) $(VENV); \
+		uv pip install --python $(BIN)/python -r requirements.txt; \
+	else \
+		echo ">> using stdlib venv + pip"; \
+		$(PY) -m venv $(VENV); \
+		$(BIN)/python -m pip install -U pip; \
+		$(BIN)/pip install -r requirements.txt; \
+	fi
 	$(BIN)/python -m spacy download en_core_web_lg
 
 index:
