@@ -6,6 +6,7 @@ autocomplete + validation and never reaches into raw dicts. Load once via
 """
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import List
@@ -60,8 +61,9 @@ class PrivacyCfg(BaseModel):
 
 
 class LLMCfg(BaseModel):
-    provider: str = "mock"  # mock | claude
+    provider: str = "mock"  # mock | claude | openai
     claude_model: str = "claude-haiku-4-5"
+    openai_model: str = "gpt-4o-mini"
     max_tokens: int = 512
     temperature: float = 0.0
 
@@ -88,9 +90,33 @@ class Config(BaseModel):
         return REPO_ROOT / relative
 
 
+def _load_dotenv() -> None:
+    """Populate os.environ from a repo-root .env (git-ignored), if present.
+
+    Dependency-free and non-destructive: existing environment variables win, so
+    secrets are never written to disk by us and never overridden accidentally.
+    """
+    env_path = REPO_ROOT / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
 @lru_cache(maxsize=1)
 def load_config(config_path: str | None = None) -> Config:
+    _load_dotenv()
     path = Path(config_path) if config_path else REPO_ROOT / "config.yaml"
     with open(path, "r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
-    return Config(**raw)
+    cfg = Config(**raw)
+    # Env override lets you switch providers without editing the committed
+    # default (which stays `mock` so the repo runs offline for reviewers).
+    provider = os.environ.get("LLM_PROVIDER")
+    if provider:
+        cfg.llm.provider = provider
+    return cfg

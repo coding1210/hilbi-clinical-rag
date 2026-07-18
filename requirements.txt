@@ -10,8 +10,9 @@ spacy>=3.7.0
 # spaCy model installed separately via `make setup`:
 #   python -m spacy download en_core_web_lg
 
-# --- Generation (optional; only needed for the Claude path) ---
-anthropic>=0.40.0
+# --- Generation (optional; only needed for the API LLM paths) ---
+anthropic>=0.40.0        # llm.provider=claude
+openai>=1.40.0           # llm.provider=openai
 
 # --- Config / data / reporting ---
 pydantic>=2.6.0

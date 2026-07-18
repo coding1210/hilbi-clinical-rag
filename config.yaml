@@ -55,10 +55,13 @@ privacy:
   enable_mrn_recognizer: true # custom recognizer for Medical Record Numbers
 
 llm:
-  # provider: mock  -> deterministic extractive answer, no network, no key (default).
+  # provider: mock   -> deterministic extractive answer, no network, no key (default).
   # provider: claude -> Anthropic API (needs ANTHROPIC_API_KEY).
+  # provider: openai -> OpenAI API   (needs OPENAI_API_KEY).
+  # Override without editing this file: set LLM_PROVIDER in .env (see .env.example).
   provider: mock
   claude_model: claude-haiku-4-5
+  openai_model: gpt-4o-mini
   max_tokens: 512
   temperature: 0.0
 

@@ -9,7 +9,10 @@ Two providers behind one interface:
   faithful-by-construction baseline that isolates *retrieval* quality.
 
 * ``claude`` — Anthropic Claude via the official SDK (needs ANTHROPIC_API_KEY).
-  Only pseudonymised text is ever sent.
+* ``openai`` — OpenAI chat completions via the official SDK (needs OPENAI_API_KEY).
+
+For the API providers, only pseudonymised text is ever sent — the PHI mapping
+stays local and the answer is re-identified after generation.
 """
 from __future__ import annotations
 
@@ -76,6 +79,26 @@ class ClaudeLLM:
         return "".join(block.text for block in msg.content if block.type == "text")
 
 
+class OpenAILLM:
+    def __init__(self, cfg: LLMCfg):
+        self.cfg = cfg
+        from openai import OpenAI
+
+        self._client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+    def generate(self, bundle: PromptBundle, query: str) -> str:
+        resp = self._client.chat.completions.create(
+            model=self.cfg.openai_model,
+            max_tokens=self.cfg.max_tokens,
+            temperature=self.cfg.temperature,
+            messages=[
+                {"role": "system", "content": bundle.system},
+                {"role": "user", "content": bundle.user},
+            ],
+        )
+        return resp.choices[0].message.content or ""
+
+
 def get_llm(cfg: LLMCfg):
     if cfg.provider == "claude":
         if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -84,4 +107,11 @@ def get_llm(cfg: LLMCfg):
                 "Export it, or set llm.provider=mock in config.yaml."
             )
         return ClaudeLLM(cfg)
+    if cfg.provider == "openai":
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise RuntimeError(
+                "llm.provider=openai but OPENAI_API_KEY is not set. "
+                "Put it in .env, or set llm.provider=mock in config.yaml."
+            )
+        return OpenAILLM(cfg)
     return MockLLM()
