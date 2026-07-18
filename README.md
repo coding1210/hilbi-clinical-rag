@@ -26,8 +26,11 @@ make test       # unit tests (hermetic; no model downloads needed)
 ```
 
 Everything runs **offline with a deterministic mock LLM** — no API key required.
-To use Claude for generation instead, set `llm.provider: claude` in `config.yaml`
-and export `ANTHROPIC_API_KEY`. **PHI is pseudonymised before anything is sent.**
+To generate with a real model instead, copy `.env.example` to `.env` and set
+`LLM_PROVIDER` to `openai` (needs `OPENAI_API_KEY`) or `claude` (needs
+`ANTHROPIC_API_KEY`). `.env` is git-ignored, and **PHI is pseudonymised before
+anything is sent.** The committed default stays `mock` so reviewers can run the
+whole thing offline.
 
 > Python 3.12 recommended (`make setup` uses `uv` if present, else `venv`).
 
@@ -96,14 +99,20 @@ Pseudonymisation runs **before** the query is embedded, prompted, or sent to any
 LLM. A dependency-free regex backend kicks in if Presidio/spaCy are unavailable
 so the pipeline still runs; the active backend is logged.
 
-> **HIPAA nuance:** under Safe Harbor only ages **over 89** are PHI, so ordinary
-> ages (62, 74) are intentionally left intact — correct behaviour, not a miss.
+> **HIPAA nuance:** Presidio's `DATE_TIME` recognizer is broad — it flags not
+> just dates and DOBs but also age expressions like "age 74" and durations like
+> "two weeks", which it then pseudonymises. Under HIPAA Safe Harbor only ages
+> **over 89** are identifiers, so this is *conservative over-redaction*: safe by
+> default (nothing sensitive slips through), and the answer is re-identified for
+> the clinician anyway. A production system could add an age-range rule to retain
+> ages ≤ 89 — the custom-recognizer hook shows exactly where that plugs in.
 
 ### Generation — `src/clinical_rag/llm.py`
 Pluggable. `mock` (default) is a deterministic extractive generator that only
 emits sentences lifted from the retrieved sources — faithful by construction, so
-the eval isolates *retrieval* quality with no API key. `claude` uses the
-Anthropic SDK; only pseudonymised text is sent.
+the eval isolates *retrieval* quality with no API key. `openai` and `claude` use
+the respective official SDKs; only pseudonymised text is sent, and the answer is
+re-identified locally afterwards.
 
 ---
 
@@ -123,22 +132,25 @@ Three axes, written to [`results/eval_report.md`](results/eval_report.md) and
 Metrics are implemented from scratch in `src/clinical_rag/metrics.py` (no
 black-box eval library) so every number is auditable.
 
-**Headline results** (25 queries, mock LLM, Presidio de-id — full tables in
-[`results/eval_report.md`](results/eval_report.md)):
+**Headline results** (25 queries, Presidio de-id). The committed
+[`results/eval_report.md`](results/eval_report.md) is the reproducible **mock**
+run; [`results/eval_report.openai.md`](results/eval_report.openai.md) is a real
+**gpt-4o-mini** run for comparison (not reproducible without a key):
 
-| axis | result |
-|---|---|
-| retrieval (hybrid) | recall@5 = 1.00, nDCG@5 = 1.00, MRR = 1.00 |
-| generation | groundedness = 1.00, citation coverage = 1.00, token-F1 = 0.41 |
-| privacy | 68 PHI entities pseudonymised, **0 leaks** |
+| axis | mock (offline default) | openai (gpt-4o-mini) |
+|---|---|---|
+| retrieval (hybrid) | recall@5 = 1.00, nDCG@5 = 1.00, MRR = 1.00 | *(same — LLM-independent)* |
+| generation | groundedness = 1.00, citation = 1.00, token-F1 = 0.41 | groundedness = 0.88, citation = 1.00, token-F1 = 0.59 |
+| privacy | 68 PHI pseudonymised, **0 leaks** | 68 PHI pseudonymised, **0 leaks** |
 
 *Honest reading:* this curated corpus is small and topically separable, so dense
 retrieval already saturates — hybrid adds no headroom and re-ranking even trades
 a hair of nDCG by reordering an already-correct top hit. That is the expected
 shape; the ablation exists precisely to expose where these choices *do* matter
-(larger, more ambiguous corpora). token-F1 is moderate because the mock generator
-extracts source sentences verbatim while references are paraphrased — that is a
-property of the deterministic baseline, not a retrieval failure.
+(larger, more ambiguous corpora). The mock generator scores perfect groundedness
+because it extracts source sentences verbatim, but lower token-F1 vs the
+paraphrased references; gpt-4o-mini flips that — it paraphrases (higher token-F1)
+at a small, realistic groundedness cost. Both leak zero PHI.
 
 ---
 
@@ -160,8 +172,8 @@ tests/              hermetic unit tests (metrics, de-id, chunking/RRF)
 - **Corpus is a curated slice** for offline reproducibility; flip
   `use_huggingface` for full MedQuAD, or point the loader at real (de-identified)
   discharge notes.
-- **Groundedness is a lexical proxy.** With Claude configured, an LLM-judge
-  faithfulness score is the natural upgrade; RAGAS could cross-check.
+- **Groundedness is a lexical proxy.** With an API LLM configured (openai/claude),
+  an LLM-judge faithfulness score is the natural upgrade; RAGAS could cross-check.
 - **De-id precision/recall is not perfect.** Presidio F1 on clinical text is
   ~0.4–0.85 in the literature. It also *over-redacts* here: `DATE_TIME` catches
   durations and ages ("age 62", "two weeks") that are not HIPAA identifiers,
